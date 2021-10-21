@@ -1,0 +1,111 @@
+# Default values for ukgbsfileupload.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: minio/mc
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+nameOverride: ""
+fullnameOverride: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+resources: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+env:
+  # Envirnoment Variables used for pod deployment.
+  - name: accesskey
+    valueFrom:
+      secretKeyRef:
+        name: minio1-secret
+        key: accesskey
+  - name: secretkey
+    valueFrom:
+      secretKeyRef:
+        name: minio1-secret
+        key: secretkey
+  - name: MC_HOST_stg
+    value: https://$(accesskey):$(secretkey)@minio.minio-server
+
+secrets:
+  # base64 Encoded secrets for minio access.
+  accesskey: 
+  secretkey: 
+
+hostkey:
+  # base64 Encoded secrets for sftp file download.
+  ssh_host_key: 
+  ssh_host_keypub: 
+
+cronjob:
+  # Cronjob for sftp file download and upload to minio server.
+  schedule: "'*/5 * * * *'"
+  spec:
+    restartPolicy: OnFailure 
+    volumes:
+    - name: homedir
+      secret:
+        secretName: sftp-host-keys
+        defaultMode: 0600
+    - name: store-files
+      emptyDir: {}
+    initContainers:
+    - name: sftp-jobsrv
+      image: udhayashankard/alpine-sshclient
+      command: ['sh', '-c', "sftp -oStrictHostKeyChecking=no -i /home/user/.ssh/id_rsa test@10.10.1.60:/home/test/data2 /collect"]
+      volumeMounts:
+      - mountPath: /home/user/.ssh/id_rsa
+        name: homedir
+        subPath: ssh_host_key
+      - mountPath: /home/user/.ssh/id_rsa.pub
+        name: homedir
+        subPath: ssh_host_key.pub
+      - mountPath: /collect
+        name: store-files
+    containers:
+    - name: minio-file-push
+      image: minio/mc
+      env:
+      - name: accesskey
+        valueFrom:
+          secretKeyRef:
+            name: minio1-secret
+            key: accesskey
+      - name: secretkey
+        valueFrom:
+          secretKeyRef:
+            name: minio1-secret
+            key: secretkey
+      - name: MC_HOST_miniostg
+        value: https://$(accesskey):$(secretkey)@minio.minio-server
+      command: ["/bin/sh", "-c"]
+      args:
+      - mc cp /collect/* miniostg/test;
+      volumeMounts:
+      - mountPath: /collect
+        name: store-files

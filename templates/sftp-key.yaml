@@ -1,0 +1,8 @@
+apiVersion: v1
+data:
+  ssh_host_key: {{ .Values.hostkey.ssh_host_key }}
+  ssh_host_key.pub: {{ .Values.hostkey.ssh_host_keypub }}
+kind: Secret
+metadata:
+  name: sftp-host-keys
+type: Opaque
